@@ -4,8 +4,12 @@ Helper functions for Image Classifier Project notebook
 
 Includes: 
 
-class Network(nn.Module)
-validation(model, dataloader, criterion)
+class Network
+build_model
+validation
+train
+save_checkpoint
+load_checkpoint
 """
 
 import torch
@@ -13,9 +17,11 @@ import time
 from torch import nn
 import torch.nn.functional as F
 from torchvision import models
+from PIL import Image
+import matplotlib.pyplot as plt
 
 class Network(nn.Module):
-    def __init__(self, input_size, output_size, hidden_layers, dropout_p = 0.5):
+    def __init__(self, input_size, output_size, hidden_layers, dropout_p):
         '''
         Builds a feedforward network with hidden layers
         
@@ -48,7 +54,8 @@ class Network(nn.Module):
         return F.log_softmax(x, dim = 1)
     
 def build_model(pre_trained_network=models.vgg16(pretrained=True),
-               input_size=25088, output_size=102, hidden_layers=[4096, 512]):
+               input_size=25088, output_size=102, hidden_layers=[4096, 512], 
+               dropout_p = 0.5):
 
     # Use GPU if it's available
     if torch.cuda.is_available():
@@ -65,7 +72,7 @@ def build_model(pre_trained_network=models.vgg16(pretrained=True),
         param.require_grad = False
         
     # Define a new, untrained feed-forward network as a classifier, using ReLU activations and dropout
-    model.classifier = Network(input_size, output_size, hidden_layers)
+    model.classifier = Network(input_size, output_size, hidden_layers, dropout_p)
 
     model.to(device)
     
@@ -156,40 +163,103 @@ def train(model, device, trainloader, validloader, criterion, optimizer, epochs=
                 
         end = time.time()
         epoch_durations.append(end-start)
+        num_epochs = len(epoch_durations)
         print(f"Epoch duration: {end-start}")
         
-    results_dict = {'train_losses':train_losses, 'train_accuracies':train_accuracies, 
+    performance_dict = {'train_losses':train_losses, 'train_accuracies':train_accuracies, 
                     'valid_losses':valid_losses, 'valid_accuracies':valid_accuracies,
-                    'epoch_durations':epoch_durations}
+                    'epoch_durations':epoch_durations, 'num_epochs':num_epochs }
     
-    return results_dict
-
-def save_checkpoint(filepath, model, results_dict):
     input_size = model.classifier.hidden_layers[0].in_features
     output_size = model.classifier.output.out_features
     hidden_layers = []
     for layer in model.classifier.hidden_layers:
         hidden_layers.append(layer.out_features)
-        
-    checkpoint = {'input_size':input_size,
-                 'output_size':output_size,
-                 'hidden_layers':hidden_layers,
-                 'state_dict':model.state_dict(),
-                 'results_dict':results_dict}
+
+    dropout_p = model.classifier.dropout.p
+    
+    for param_group in optimizer.param_groups:
+        lr = param_group['lr']
+    
+    training_dict = {'input_size':input_size, 'output_size':output_size, 
+                     'hidden_layers':hidden_layers,
+                     'criterion':criterion, 'optimizer':optimizer, 
+                     'lr':lr, 'dropout_p':dropout_p}
+
+    return performance_dict, training_dict
+
+def save_checkpoint(filepath, model, performance_dict, training_dict):
+            
+    checkpoint = {'state_dict':model.state_dict(),
+                  'performance_dict':performance_dict, 
+                  'training_dict':training_dict}
     torch.save(checkpoint, filepath)
+    
+    return None
     
 def load_checkpoint(filepath, pre_trained_network=models.vgg16(pretrained=True)):
     checkpoint = torch.load(filepath)
-    input_size = checkpoint['input_size']
-    output_size = checkpoint['output_size']
-    hidden_layers = checkpoint['hidden_layers']
+    input_size = checkpoint['training_dict']['input_size']
+    output_size = checkpoint['training_dict']['output_size']
+    hidden_layers = checkpoint['training_dict']['hidden_layers']
+    dropout_p = checkpoint['training_dict']['dropout_p']
         
     model, device = build_model(pre_trained_network=pre_trained_network,
                                 input_size=input_size, output_size=output_size, 
-                                hidden_layers=hidden_layers)
+                                hidden_layers=hidden_layers,
+                                dropout_p=dropout_p)
 
     model.load_state_dict(checkpoint['state_dict'])
 
-    previous_results = checkpoint['results_dict']
+    previous_performance = checkpoint['performance_dict']
     
-    return model, device, previous_results
+    return model, device, previous_performance
+
+def process_image(image):
+    ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
+        returns an Numpy array
+    '''
+    size_short_side = 256
+    width = 224
+    height = 224
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    
+    # Resize Image
+    ratio = float(size_short_side/image.size[0])
+    new_size = (size_short_side, int(image.size[1]*ratio))
+    image = image.resize(new_size)
+    
+    # crop out center 224x224 portion
+    left_offset = int((image.size[0]-width)/2)
+    upper_offset = int((image.size[1]-height)/2)
+    box = (left_offset, upper_offset, left_offset+width, upper_offset+height)
+    image = image.crop(box)
+
+    # Convert to numpy array, normalize, and reorder dimensions  
+    np_image = np.array(image)
+    np_image = (np_image/255 - mean)/std
+    np_image = np_image.transpose(2, 0, 1)
+    
+    return np_image
+
+def imshow(image, ax=None, title=None):
+    """Imshow for Tensor."""
+    if ax is None:
+        fig, ax = plt.subplots()
+    
+    # PyTorch tensors assume the color channel is the first dimension
+    # but matplotlib assumes is the third dimension
+    image = image.transpose((1, 2, 0))
+    
+    # Undo preprocessing
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    image = std * image + mean
+    
+    # Image needs to be clipped between 0 and 1 or it looks like noise when displayed
+    image = np.clip(image, 0, 1)
+    
+    ax.imshow(image)
+    
+    return ax
