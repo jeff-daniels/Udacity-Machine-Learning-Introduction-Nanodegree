@@ -101,7 +101,8 @@ def validation(model, device, dataloader, criterion):
     accuracy = accuracy/len(dataloader)
     return loss, accuracy
     
-def train(model, device, trainloader, validloader, criterion, optimizer, epochs=1, print_every=5, max_steps=None):
+def train(model, device, trainloader, validloader, criterion, optimizer, 
+          epochs=1, print_every=5, max_steps=None, performance_dict = {}):
     # Train the classifier layers using backpropagation using the pre-trained network to get the features
     steps = 0
     running_loss = 0
@@ -137,13 +138,16 @@ def train(model, device, trainloader, validloader, criterion, optimizer, epochs=
             equals = top_class == labels.view(*top_class.shape)
             running_accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
 
+            # Print out in-training performance
             if steps % print_every == 0:
                 model.eval()
                 
+                # Calculate performance
                 valid_loss, valid_accuracy = validation(model, device, validloader, criterion)
                 train_loss = running_loss/print_every
                 train_accuracy = running_accuracy/print_every
                 
+                # Update performance lists
                 train_losses.append(train_loss)
                 train_accuracies.append(train_accuracy)
                 valid_losses.append(valid_loss)
@@ -163,13 +167,22 @@ def train(model, device, trainloader, validloader, criterion, optimizer, epochs=
                 
         end = time.time()
         epoch_durations.append(end-start)
-        num_epochs = len(epoch_durations)
         print(f"Epoch duration: {end-start}")
-        
-    performance_dict = {'train_losses':train_losses, 'train_accuracies':train_accuracies, 
-                    'valid_losses':valid_losses, 'valid_accuracies':valid_accuracies,
-                    'epoch_durations':epoch_durations, 'num_epochs':num_epochs }
     
+    # Create or update performance_dict
+    keys = ['train_losses', 'train_accuracies', 'valid_losses', 'valid_accuracies', 'epoch_durations']
+    lsts = [train_losses, train_accuracies, valid_losses, valid_accuracies, epoch_durations]
+    for key, lst in zip(keys, lsts):
+        if key in performance_dict.keys():
+            for item in lst:
+                performance_dict[key].append(item)
+        else:
+            performance_dict[key] = lst
+    
+    num_epochs = len(performance_dict['epoch_durations'])
+    performance_dict['num_epochs'] = num_epochs
+    
+    # Create training_dict
     input_size = model.classifier.hidden_layers[0].in_features
     output_size = model.classifier.output.out_features
     hidden_layers = []
