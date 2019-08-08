@@ -201,11 +201,14 @@ def train(model, device, trainloader, validloader, criterion, optimizer,
 
     return performance_dict, training_dict
 
-def save_checkpoint(filepath, model, performance_dict, training_dict):
-            
+def save_checkpoint(filepath, model, performance_dict, training_dict, mapping_dict):
+    
+    model.to('cpu')
+    
     checkpoint = {'state_dict':model.state_dict(),
                   'performance_dict':performance_dict, 
-                  'training_dict':training_dict}
+                  'training_dict':training_dict, 
+                  'mapping_dict':mapping_dict}
     torch.save(checkpoint, filepath)
     
     return None
@@ -224,9 +227,10 @@ def load_checkpoint(filepath, pre_trained_network=models.vgg16(pretrained=True))
 
     model.load_state_dict(checkpoint['state_dict'])
 
-    previous_performance = checkpoint['performance_dict']
+    performance_dict = checkpoint['performance_dict']
+    mapping_dict = checkpoint['mapping']
     
-    return model, device, previous_performance
+    return model, device, performance_dict, mapping_dict
 
 def process_image(image):
     ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
