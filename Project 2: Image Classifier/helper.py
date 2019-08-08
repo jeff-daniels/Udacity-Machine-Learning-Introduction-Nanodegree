@@ -228,7 +228,8 @@ def load_checkpoint(filepath, pre_trained_network=models.vgg16(pretrained=True))
     model.load_state_dict(checkpoint['state_dict'])
 
     performance_dict = checkpoint['performance_dict']
-    mapping_dict = checkpoint['mapping']
+    mapping_dict = checkpoint['mapping_dict']
+    model.class_to_idx = mapping_dict
     
     return model, device, performance_dict, mapping_dict
 
@@ -280,3 +281,76 @@ def imshow(image, ax=None, title=None):
     ax.imshow(image)
     
     return ax
+
+def predict(image_path, model, topk=5):
+    ''' Predict the class (or classes) of an image using a trained deep learning model.
+        return probabilities and classes
+    '''
+    # Implement the code to predict the class from an image file
+    
+    # Load image
+    image = Image.open(image_path)
+
+    # Convert image into a pytorch tensor
+    np_image = process_image(image)
+    tensor_image = torch.from_numpy(np_image).type(torch.FloatTensor)
+    tensor_image = tensor_image.unsqueeze(dim=0) # torch.Tensor, torch.Size([3, 224, 224])
+
+    # Make a prediction
+    tensor_image = tensor_image.to(device)
+    with torch.no_grad():
+        model.eval()
+        output = model.forward(tensor_image)
+
+    # Calculate probabilites and most likely classes
+    probabilities = torch.exp(output)
+    top_p, top_class = probabilities.topk(5, dim=1)
+
+    # Convert top_p to a list
+    probs = list(top_p.cpu().numpy().squeeze())
+
+    # Figure out the flower names and classes
+    flower_classes, flower_names = [], []
+    for idx in top_class.cpu().numpy().squeeze():
+        flower_class = list(model.class_to_idx.keys())[list(model.class_to_idx.values()).index(idx)]
+        flower_name = cat_to_name[flower_class]
+        flower_classes.append(flower_class)
+        flower_names.append(flower_name)
+
+    classes = flower_classes
+        
+    return probs, classes
+
+def display_and_plot_classes(image_path, classes):
+    original_image = Image.open(image_path)
+    np_image = process_image(original_image)
+
+    # PyTorch tensors assume the color channel is the first dimension
+    # but matplotlib assumes is the third dimension
+    image = np_image.transpose((1, 2, 0))
+    
+    # Undo preprocessing
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    image = std * image + mean
+    
+    # Image needs to be clipped between 0 and 1 or it looks like noise when displayed
+    image = np.clip(image, 0, 1)
+    
+    # Figure out the flower names
+    flower_names = []
+
+    for flower_class in classes:
+        flower_name = cat_to_name[flower_class]
+        flower_names.append(flower_name)
+
+    # Plot the original image and the probabilites of the top classes
+    fig, (ax1, ax2) = plt.subplots(figsize = (15,4), ncols=2)
+    ax1.imshow(image)
+    ax1.axis('off')
+    ax1.set_title('Actual Flower Name Goes Here')
+    ax2.barh(np.arange(5), top_p.cpu().numpy().squeeze())
+    ax2.set_yticks(np.arange(5))
+    ax2.set_yticklabels(flower_names)
+    ax2.set_title('Class Probability')
+    ax2.set_xlim(0, 1.1)
