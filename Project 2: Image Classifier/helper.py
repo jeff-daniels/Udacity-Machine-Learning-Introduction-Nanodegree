@@ -212,10 +212,13 @@ def train(model, device, trainloader, validloader, criterion, optimizer,
 
     return performance_dict, training_dict
 
-def save_checkpoint(filepath, model, architecture, performance_dict, training_dict, mapping_dict):
+def save_checkpoint(chkpt_filepath, perf_filepath, 
+                    model, architecture, performance_dict, training_dict, mapping_dict):
     
+    # No need to save as gpu
     model.to('cpu')
     
+    # Save the checkpoint
     checkpoint = {'state_dict':model.state_dict(),
                   'architecture':architecture,
                   'performance_dict':performance_dict, 
@@ -223,6 +226,12 @@ def save_checkpoint(filepath, model, architecture, performance_dict, training_di
                   'mapping_dict':mapping_dict}
     torch.save(checkpoint, filepath)
     
+    # Save the performance dict in an additional file for reference
+    json = json.dumps(performance_dict)
+    f = open(perf_filepath,"w")
+    f.write(json)
+    f.close()
+
     return None
     
 def load_checkpoint(filepath, gpu=False):
@@ -233,7 +242,7 @@ def load_checkpoint(filepath, gpu=False):
     hidden_layers = checkpoint['training_dict']['hidden_layers']
     dropout_p = checkpoint['training_dict']['dropout_p']
         
-    model, device = build_model(architecture=architecture, gpu=gpu,
+    model, device, architecture = build_model(architecture=architecture, gpu=gpu,
                                 input_size=input_size, output_size=output_size, 
                                 hidden_layers=hidden_layers,
                                 dropout_p=dropout_p)
@@ -244,7 +253,7 @@ def load_checkpoint(filepath, gpu=False):
     mapping_dict = checkpoint['mapping_dict']
     model.class_to_idx = mapping_dict
     
-    return model, architecture, device, performance_dict, mapping_dict
+    return model, device, architecture,  performance_dict, mapping_dict
 
 def process_image(image):
     ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
