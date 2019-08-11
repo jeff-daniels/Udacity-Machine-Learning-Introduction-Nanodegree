@@ -8,9 +8,11 @@ from workspace_utils import active_session, keep_awake
 parser = argparse.ArgumentParser()
 parser.add_argument("data_dir", help="data directory of the training files", type=str)
 parser.add_argument("--save_dir", default='', help="directory to save the training checkpoint", type=str)
-parser.add_argument("--arch", help="model archictecture, ie. 'vgg13'", type=str)
+parser.add_argument("--arch", default = 'vgg16', 
+                    help="model archictecture, choose 'vgg16', 'alexnet', 'resnet18'", type=str)
 parser.add_argument("--learning_rate", default=0.0003, help="learning rate", type=float)
 parser.add_argument("--hidden_units", default=[4096, 512], help="hidden units in list form", type=list)
+parser.add_argument("--dropout_p", default=0.5, help="dropout rate", type=float)
 parser.add_argument("--epochs", default=1, help="number of epochs to train", type=int)
 parser.add_argument("--max_steps", default=None, 
                     help="maximum of batches to train, None=Unlimited", type=int)
@@ -49,8 +51,8 @@ trainloader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shu
 validloader = torch.utils.data.DataLoader(valid_data, batch_size=batch_size)
 
 # Construct a model and its training parameters
-
-model, device = cl_helper.build_model(hidden_layers=args.hidden_units, dropout_p=0.5)
+model, device, architecture = cl_helper.build_model(architecture=args.arch, gpu=args.gpu,
+                                      hidden_layers=args.hidden_units, dropout_p=args.dropout_p)
 criterion = nn.NLLLoss()
 
 # Only train the classifier parameters, feature parameters are frozen
@@ -60,6 +62,7 @@ optimizer = optim.Adam(model.classifier.parameters(), lr = args.learning_rate)
 
 with active_session():
     print('Training in Progress.....')
+    print('GPU status: {}'.format(args.gpu))
     performance_dict, training_dict  = cl_helper.train(model, device, trainloader, validloader, 
                                                     criterion, optimizer, 
                                                     epochs = args.epochs, 
@@ -73,5 +76,5 @@ filepath = args.save_dir + 'checkpoint.pth'
 
 model.class_to_idx = train_data.class_to_idx
 mapping_dict = model.class_to_idx
-cl_helper.save_checkpoint(filepath, model, performance_dict, training_dict, mapping_dict)
+cl_helper.save_checkpoint(filepath, model, architecture, performance_dict, training_dict, mapping_dict)
 print('Check point saved in {}'.format(filepath))

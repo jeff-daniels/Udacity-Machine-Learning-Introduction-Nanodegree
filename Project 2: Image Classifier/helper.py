@@ -2,14 +2,6 @@
 helper.py
 Helper functions for Image Classifier Project notebook
 
-Includes: 
-
-class Network
-build_model
-validation
-train
-save_checkpoint
-load_checkpoint
 """
 
 import torch
@@ -19,6 +11,8 @@ import torch.nn.functional as F
 from torchvision import models
 from PIL import Image
 import matplotlib.pyplot as plt
+import json
+import numpy as np
 
 class Network(nn.Module):
     def __init__(self, input_size, output_size, hidden_layers, dropout_p):
@@ -304,7 +298,7 @@ def imshow(image, ax=None, title=None):
     
     return ax
 
-def predict(image_path, model, topk=5):
+def predict(image_path, label_path, model, device, topk=5):
     ''' Predict the class (or classes) of an image using a trained deep learning model.
         return probabilities and classes
     '''
@@ -312,6 +306,10 @@ def predict(image_path, model, topk=5):
     
     # Load image
     image = Image.open(image_path)
+    
+    # Load label mapping
+    with open(label_path, 'r') as f:
+        cat_to_name = json.load(f)
 
     # Convert image into a pytorch tensor
     np_image = process_image(image)
@@ -326,7 +324,7 @@ def predict(image_path, model, topk=5):
 
     # Calculate probabilites and most likely classes
     probabilities = torch.exp(output)
-    top_p, top_class = probabilities.topk(5, dim=1)
+    top_p, top_class = probabilities.topk(topk, dim=1)
 
     # Convert top_p to a list
     probs = list(top_p.cpu().numpy().squeeze())
@@ -341,7 +339,7 @@ def predict(image_path, model, topk=5):
 
     classes = flower_classes
         
-    return probs, classes
+    return probs, classes, flower_names
 
 def display_and_plot_classes(image_path, classes):
     original_image = Image.open(image_path)

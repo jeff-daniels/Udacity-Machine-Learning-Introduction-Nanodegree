@@ -1,4 +1,5 @@
 """
+helper.py
 Helper functions for Image Classifier Project notebook
 
 """
@@ -10,6 +11,8 @@ import torch.nn.functional as F
 from torchvision import models
 from PIL import Image
 import matplotlib.pyplot as plt
+import json
+import numpy as np
 
 class Network(nn.Module):
     def __init__(self, input_size, output_size, hidden_layers, dropout_p):
@@ -44,19 +47,30 @@ class Network(nn.Module):
         
         return F.log_softmax(x, dim = 1)
     
-def build_model(pre_trained_network=models.vgg16(pretrained=True),
+def build_model(architecture='vgg16', gpu = False,
                input_size=25088, output_size=102, hidden_layers=[4096, 512], 
                dropout_p = 0.5):
-
+    
+    # Define network architecture
+    if architecture == 'vgg16':
+        pretrained_network = models.vgg16(pretrained=True)
+    elif architecture == 'alexnet':
+        pretrained_network = models.alexnet(pretrained=True)
+    elif architecture == 'resnet18':
+        pretrained_network = models.resnet18(pretrained=True)
+    else:
+        print('Unknown Model')
+        pretrained_network = None
+    
     # Use GPU if it's available
-    if torch.cuda.is_available():
+    if gpu and torch.cuda.is_available():
         device = torch.device("cuda")
         torch.cuda.manual_seed_all(42)
     else:
         device = torch.device("cpu")
         
     # Load a pre-trained network
-    model = pre_trained_network
+    model = pretrained_network
     
     # Freeze features parameters so backpropagation isn't performed
     for param in model.parameters():
@@ -67,7 +81,7 @@ def build_model(pre_trained_network=models.vgg16(pretrained=True),
 
     model.to(device)
     
-    return model, device
+    return model, device, architecture
 
 def validation(model, device, dataloader, criterion):
     loss = 0
@@ -144,8 +158,10 @@ def train(model, device, trainloader, validloader, criterion, optimizer,
                 valid_losses.append(valid_loss)
                 valid_accuracies.append(valid_accuracy)
                 
-                print(f"Epoch {epoch+1}/{epochs}.."
+                print(f"Step {steps}.."
+                      f"Epoch {epoch+1}/{epochs}.."
                       f"Train loss: {train_loss/print_every:.3f}.."
+                      f"Train Accuracy: {train_accuracy:.3f}.."
                       f"Validation loss: {valid_loss:.3f}.."
                       f"Validation Accuracy: {valid_accuracy:.3f}"
                      )
@@ -190,26 +206,37 @@ def train(model, device, trainloader, validloader, criterion, optimizer,
 
     return performance_dict, training_dict
 
-def save_checkpoint(filepath, model, performance_dict, training_dict, mapping_dict):
+def save_checkpoint(chkpt_filepath, perf_filepath, 
+                    model, architecture, performance_dict, training_dict, mapping_dict):
     
+    # No need to save as gpu
     model.to('cpu')
     
+    # Save the checkpoint
     checkpoint = {'state_dict':model.state_dict(),
+                  'architecture':architecture,
                   'performance_dict':performance_dict, 
                   'training_dict':training_dict, 
                   'mapping_dict':mapping_dict}
     torch.save(checkpoint, filepath)
     
+    # Save the performance dict in an additional file for reference
+    json = json.dumps(performance_dict)
+    f = open(perf_filepath,"w")
+    f.write(json)
+    f.close()
+
     return None
     
-def load_checkpoint(filepath, pre_trained_network=models.vgg16(pretrained=True)):
+def load_checkpoint(filepath, gpu=False):
     checkpoint = torch.load(filepath)
+    architecture = checkpoint['architecture']
     input_size = checkpoint['training_dict']['input_size']
     output_size = checkpoint['training_dict']['output_size']
     hidden_layers = checkpoint['training_dict']['hidden_layers']
     dropout_p = checkpoint['training_dict']['dropout_p']
         
-    model, device = build_model(pre_trained_network=pre_trained_network,
+    model, device, architecture = build_model(architecture=architecture, gpu=gpu,
                                 input_size=input_size, output_size=output_size, 
                                 hidden_layers=hidden_layers,
                                 dropout_p=dropout_p)
@@ -220,7 +247,7 @@ def load_checkpoint(filepath, pre_trained_network=models.vgg16(pretrained=True))
     mapping_dict = checkpoint['mapping_dict']
     model.class_to_idx = mapping_dict
     
-    return model, device, performance_dict, mapping_dict
+    return model, device, architecture,  performance_dict, mapping_dict
 
 def process_image(image):
     ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
@@ -271,7 +298,7 @@ def imshow(image, ax=None, title=None):
     
     return ax
 
-def predict(image_path, model, topk=5):
+def predict(image_path, label_path, model, device, topk=5):
     ''' Predict the class (or classes) of an image using a trained deep learning model.
         return probabilities and classes
     '''
@@ -279,6 +306,10 @@ def predict(image_path, model, topk=5):
     
     # Load image
     image = Image.open(image_path)
+    
+    # Load label mapping
+    with open(label_path, 'r') as f:
+        cat_to_name = json.load(f)
 
     # Convert image into a pytorch tensor
     np_image = process_image(image)
@@ -293,7 +324,7 @@ def predict(image_path, model, topk=5):
 
     # Calculate probabilites and most likely classes
     probabilities = torch.exp(output)
-    top_p, top_class = probabilities.topk(5, dim=1)
+    top_p, top_class = probabilities.topk(topk, dim=1)
 
     # Convert top_p to a list
     probs = list(top_p.cpu().numpy().squeeze())
@@ -308,7 +339,7 @@ def predict(image_path, model, topk=5):
 
     classes = flower_classes
         
-    return probs, classes
+    return probs, classes, flower_names
 
 def display_and_plot_classes(image_path, classes):
     original_image = Image.open(image_path)
