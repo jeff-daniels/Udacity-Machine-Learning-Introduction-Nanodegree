@@ -53,19 +53,30 @@ class Network(nn.Module):
         
         return F.log_softmax(x, dim = 1)
     
-def build_model(pre_trained_network=models.vgg16(pretrained=True),
+def build_model(architecture='vgg16', gpu = False,
                input_size=25088, output_size=102, hidden_layers=[4096, 512], 
                dropout_p = 0.5):
-
+    
+    # Define network architecture
+    if architecture == 'vgg16':
+        pretrained_network = models.vgg16(pretrained=True)
+    elif architecture == 'alexnet':
+        pretrained_network = models.alexnet(pretrained=True)
+    elif architecture == 'resnet18':
+        pretrained_network = models.resnet18(pretrained=True)
+    else:
+        print('Unknown Model')
+        pretrained_network = None
+    
     # Use GPU if it's available
-    if torch.cuda.is_available():
+    if gpu and torch.cuda.is_available():
         device = torch.device("cuda")
         torch.cuda.manual_seed_all(42)
     else:
         device = torch.device("cpu")
         
     # Load a pre-trained network
-    model = pre_trained_network
+    model = pretrained_network
     
     # Freeze features parameters so backpropagation isn't performed
     for param in model.parameters():
@@ -76,7 +87,7 @@ def build_model(pre_trained_network=models.vgg16(pretrained=True),
 
     model.to(device)
     
-    return model, device
+    return model, device, architecture
 
 def validation(model, device, dataloader, criterion):
     loss = 0
@@ -201,11 +212,12 @@ def train(model, device, trainloader, validloader, criterion, optimizer,
 
     return performance_dict, training_dict
 
-def save_checkpoint(filepath, model, performance_dict, training_dict, mapping_dict):
+def save_checkpoint(filepath, model, architecture, performance_dict, training_dict, mapping_dict):
     
     model.to('cpu')
     
     checkpoint = {'state_dict':model.state_dict(),
+                  'architecture':architecture,
                   'performance_dict':performance_dict, 
                   'training_dict':training_dict, 
                   'mapping_dict':mapping_dict}
@@ -213,14 +225,15 @@ def save_checkpoint(filepath, model, performance_dict, training_dict, mapping_di
     
     return None
     
-def load_checkpoint(filepath, pre_trained_network=models.vgg16(pretrained=True)):
+def load_checkpoint(filepath, gpu=False):
     checkpoint = torch.load(filepath)
+    architecture = checkpoint['architecture']
     input_size = checkpoint['training_dict']['input_size']
     output_size = checkpoint['training_dict']['output_size']
     hidden_layers = checkpoint['training_dict']['hidden_layers']
     dropout_p = checkpoint['training_dict']['dropout_p']
         
-    model, device = build_model(pre_trained_network=pre_trained_network,
+    model, device = build_model(architecture=architecture, gpu=gpu,
                                 input_size=input_size, output_size=output_size, 
                                 hidden_layers=hidden_layers,
                                 dropout_p=dropout_p)
@@ -231,7 +244,7 @@ def load_checkpoint(filepath, pre_trained_network=models.vgg16(pretrained=True))
     mapping_dict = checkpoint['mapping_dict']
     model.class_to_idx = mapping_dict
     
-    return model, device, performance_dict, mapping_dict
+    return model, architecture, device, performance_dict, mapping_dict
 
 def process_image(image):
     ''' Scales, crops, and normalizes a PIL image for a PyTorch model,
