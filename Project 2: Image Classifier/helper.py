@@ -206,6 +206,34 @@ def train(model, device, trainloader, validloader, criterion, optimizer,
 
     return performance_dict, training_dict
 
+def plot_results(results):
+    import matplotlib.pyplot as plt
+    % matplotlib inline
+    plt.plot(results['valid_losses'], 'b')
+    plt.plot(results['train_losses'], 'r')
+
+def compare_hyperparameters(filepaths):
+    perf = {}
+    perf['Epochs'] = [5, 5, 5, 5]
+    perf['Hidden Layers'] = ['4096x512', '4096x512', '4096x512', '512x256']
+    perf['Dropout Proportion'] = [0.5, 0.5, 0.5, 0.5]
+    perf['Learning Rate'] = [0.001, 0.003, 0.0003, 0.0003]
+    
+    min_valid_loss = []
+    max_valid_accuracy = []
+    
+    for fp in filepaths:
+        with open(fp, 'r') as f:
+            perf_dict = json.load(f)
+            min_valid_loss.append(min(perf_dict['valid_losses']))
+            max_valid_accuracy.append(max(perf_dict['valid_accuracies']))
+    
+    perf['Minimum Validation Loss'] = min_valid_loss
+    perf['Maximum Validation Accuracy'] = max_valid_accuracy
+     
+    df = pd.DataFrame(perf)
+    return df    
+
 def save_checkpoint(chkpt_filepath, perf_filepath, 
                     model, architecture, performance_dict, training_dict, mapping_dict):
     
@@ -273,7 +301,7 @@ def process_image(image):
     # Convert to numpy array, normalize, and reorder dimensions  
     np_image = np.array(image)
     np_image = (np_image/255 - mean)/std
-    np_image = np_image.transpose(2, 0, 1)
+    np_image = np_image.transpose((2, 0, 1))
     
     return np_image
 
