@@ -13,6 +13,7 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import json
 import numpy as np
+import pandas as pd
 
 class Network(nn.Module):
     def __init__(self, input_size, output_size, hidden_layers, dropout_p):
@@ -207,8 +208,6 @@ def train(model, device, trainloader, validloader, criterion, optimizer,
     return performance_dict, training_dict
 
 def plot_results(results):
-    import matplotlib.pyplot as plt
-    % matplotlib inline
     plt.plot(results['valid_losses'], 'b')
     plt.plot(results['train_losses'], 'r')
 
@@ -246,9 +245,10 @@ def save_checkpoint(chkpt_filepath, perf_filepath,
                   'performance_dict':performance_dict, 
                   'training_dict':training_dict, 
                   'mapping_dict':mapping_dict}
-    torch.save(checkpoint, filepath)
+    torch.save(checkpoint, chkpt_filepath)
     
     # Save the performance dict in an additional file for reference
+    global json
     json = json.dumps(performance_dict)
     f = open(perf_filepath,"w")
     f.write(json)
@@ -369,9 +369,9 @@ def predict(image_path, label_path, model, device, topk=5):
         
     return probs, classes, flower_names
 
-def display_and_plot_classes(image_path, classes):
+def display_and_plot_classes(image_path, probs, classes, flower_names):
     original_image = Image.open(image_path)
-    np_image = process_image(original_image)
+    np_image = helper.process_image(original_image)
 
     # PyTorch tensors assume the color channel is the first dimension
     # but matplotlib assumes is the third dimension
@@ -384,20 +384,13 @@ def display_and_plot_classes(image_path, classes):
     
     # Image needs to be clipped between 0 and 1 or it looks like noise when displayed
     image = np.clip(image, 0, 1)
-    
-    # Figure out the flower names
-    flower_names = []
-
-    for flower_class in classes:
-        flower_name = cat_to_name[flower_class]
-        flower_names.append(flower_name)
 
     # Plot the original image and the probabilites of the top classes
     fig, (ax1, ax2) = plt.subplots(figsize = (15,4), ncols=2)
     ax1.imshow(image)
     ax1.axis('off')
     ax1.set_title('Actual Flower Name Goes Here')
-    ax2.barh(np.arange(5), top_p.cpu().numpy().squeeze())
+    ax2.barh(np.arange(5), probs)
     ax2.set_yticks(np.arange(5))
     ax2.set_yticklabels(flower_names)
     ax2.set_title('Class Probability')
